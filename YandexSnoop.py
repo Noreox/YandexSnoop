@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import BotCommand, ContentType
+from aiogram.types import BotCommand, ContentType, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram import Router
 from datetime import datetime
@@ -15,15 +15,19 @@ logging.basicConfig(level=logging.INFO)
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher()  # Инициализация Dispatcher без аргументов
 router = Router()
 
 # Инициализация Яндекс.Диска
 y = yadisk.YaDisk(token=YANDEX_DISK_TOKEN)
 
+# Создаем клавиатуру с кнопкой "Очистить корзину"
+clear_trash_button = KeyboardButton(text="Очистить корзину")
+keyboard = ReplyKeyboardMarkup(keyboard=[[clear_trash_button]], resize_keyboard=True)
+
 async def send_welcome_message():
-    chat_id = 'YOUR_CHAT_ID'  # Замените на ваш chat_id (см. get_chatid.py)
-    await bot.send_message(chat_id, "Бот запущен и готов к работе")
+    chat_id = 'YOUR_CHAT_ID'  # Замените на ваш chat_id
+    await bot.send_message(chat_id, "Бот запущен и готов к работе", reply_markup=keyboard)
 
 async def upload_to_yandex_disk(file, file_name):
     folder_name = datetime.now().strftime('%B_%Y')
@@ -65,8 +69,20 @@ async def handle_photos(message: types.Message):
     else:
         await message.reply("Фото уже существует на Yandex.Disk")
 
+@router.message(lambda message: message.text == "Очистить корзину")
+async def clear_trash(message: types.Message):
+    try:
+        # Очищаем корзину на Яндекс.Диске
+        y.remove_trash("/")
+        await message.reply("Корзина успешно очищена", reply_markup=keyboard)
+    except Exception as e:
+        await message.reply(f"Произошла ошибка при очистке корзины: {e}")
+
+# Регистрация роутера
+dp.include_router(router)
+
 async def main():
-    dp.include_router(router)
+    dp['bot'] = bot  # Устанавливаем bot в Dispatcher
     await send_welcome_message()  # Отправка приветственного сообщения
     await dp.start_polling(bot)
 
