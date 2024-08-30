@@ -6,9 +6,14 @@ from aiogram.filters import Command
 from aiogram import Router
 from datetime import datetime
 import yadisk
+from dotenv import load_dotenv
+import os
 
-API_TOKEN = 'YOUR_BOT_API_TOKEN'  # Замените на HTTP-API токен вашего бота
-YANDEX_DISK_TOKEN = 'YOUR_YANDEX_DISK_TOKEN'  # Замените на полученный токен вашего приложения
+# Загрузка переменных окружения из .env файла
+load_dotenv()
+
+API_TOKEN = os.getenv('BOT_API_TOKEN')  # Получение токена бота из переменных окружения
+YANDEX_DISK_TOKEN = os.getenv('YANDEX_DISK_TOKEN')  # Получение токена Яндекс.Диска из переменных окружения
 
 # Конфигурация логирования
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +31,7 @@ clear_trash_button = KeyboardButton(text="Очистить корзину")
 keyboard = ReplyKeyboardMarkup(keyboard=[[clear_trash_button]], resize_keyboard=True)
 
 async def send_welcome_message():
-    chat_id = 'YOUR_CHAT_ID'  # Замените на ваш chat_id
+    chat_id = os.getenv('CHAT_ID')  # Получение chat_id из переменных окружения
     await bot.send_message(chat_id, "Бот запущен и готов к работе", reply_markup=keyboard)
 
 async def upload_to_yandex_disk(file, file_name):
