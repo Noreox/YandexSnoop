@@ -15,20 +15,21 @@
 2. Создайте новое приложение.
 3. Выберите пункт "Веб-сервисы".
 4. В качестве "Redirect URL" укажите: `https://oauth.yandex.ru/verification_code`.
-5. Затем предоставьте приложению следующие разрешения для управления Yandex.Disk:
+5. Затем предоставьте приложению следующие права для управления Yandex.Disk:
     - Доступ к папке приложения на Диске: `cloud_api:disk.app_folder`
     - Чтение всего Диска: `cloud_api:disk.read`
     - Запись в любом месте на Диске: `cloud_api:disk.write`
     - Доступ к информации о Диске: `cloud_api:disk.info`
 6. Получите токен:
-    - Скопируйте ClientID вашего созданного приложения и получите токен по ссылке:
+    - Скопируйте ClientID вашего созданного приложения и получите токен, перейдя по следующей ссылке, заменив `ВАШ_CLIENTID` в ней:
       `https://oauth.yandex.ru/authorize?response_type=token&client_id=ВАШ_CLIENTID`.
 
-### Шаг 3: Установка Python:
-Для пользователей Linux данный шаг можно пропустить, т.к в большинстве современных дистрибутивов он установлен по умолчанию
+### Шаг 3: Установка Python
 
-Если вы пользователь Windows, то можете легко установить через [официальный сайт](https://www.python.org/downloads/)
-Перед установкой обязательно поставьте 'Add Python3.1x to PATH'
+Для пользователей Linux данный шаг можно пропустить, т.к в большинстве современных дистрибутивов он установлен по умолчанию.
+
+Если вы пользователь Windows, то можете легко установить через [официальный сайт](https://www.python.org/downloads/).
+Перед установкой обязательно поставьте 'Add Python3.x to PATH'.
 
 ### Шаг 4: Клонирование репозитория
 
@@ -47,7 +48,7 @@
 Для пользователей Linux (Ubuntu):
 1. Установите необходимые пакеты:
     ```bash
-    sudo apt-get install git python3.1x-venv # Где x - последняя доступная версия Python в вашей системе
+    sudo apt-get install git python3.x-venv # Где x - последняя доступная версия Python в вашей системе, например python3.8 и выше.
     ```
 2. Клонируйте репозиторий:
     ```bash
@@ -56,7 +57,7 @@
     git clone https://github.com/Noreox/YandexSnoop.git
     cd YandexSnoop
     ```
-    
+
 ### Шаг 5: Настройка виртуального окружения
 
 1. Создайте и активируйте виртуальное окружение:
@@ -73,35 +74,36 @@
         ```
     - На Windows:
         ```bash
-        source myenv\Scripts\activate
+        .\myenv\Scripts\activate
         ```
-
+        
 ### Шаг 6: Установка зависимостей
 
 Установите необходимые зависимости, находясь в виртуальном окружении:
 ```bash
-pip install aiogram yadisk requests
+pip install aiogram yadisk requests python-dotenv
 ```
 
 ### Шаг 7: Настройка переменных
-
-Откройте в вашем редакторе `YandexSnoop.py` и замените `YOUR_BOT_API_TOKEN` и `YOUR_YANDEX_DISK_TOKEN` на полученные ранее HTTP API токен у @BotFather и OAuth-токен у Yandex.
+Создайте файл `.env` в вашем проекте и добавьте в него следующее содержимое:
+```bash
+BOT_API_TOKEN=YOUR_BOT_API_TOKEN # Поменяйте на токен вашего бота Telegram
+YANDEX_DISK_TOKEN=YOUR_YANDEX_DISK_TOKEN # Поменяйте на токен вашего приложения Yandex 
+CHAT_ID=YOUR_CHAT_ID # См. шаг далее
+```
 
 ### Шаг 8: Получение Chat ID
-
 1. Отредактируйте файл `get_chatid.py`, заменив `YOUR_BOT_API_TOKEN` на токен вашего бота Telegram.
-2. Отправьте сообщение вашему боту
-3. Запустите скрипт `get_chatid.py`:
-    ```bash
-    python get_chatid.py
-    ```
-4. Скопируйте полученный `chat_id` и вставьте его в `YandexSnoop.py` в переменную `chat_id`.
+2. Отправьте сообщение вашему боту.
+Запустите скрипт `get_chatid.py`
+```bash
+python get_chatid.py
+```
+3. Скопируйте полученный `chat_id` и добавьте его в `.env` файл в переменную CHAT_ID.
 
 ### Шаг 9: Запуск бота
-
 Теперь почти всё готово, осталось запустить бота:
 ```bash
 python YandexSnoop.py
 ```
-
 Теперь ваш бот готов к работе. Отправляйте файлы боту в Telegram, и они будут автоматически загружены на ваш Yandex.Disk.
