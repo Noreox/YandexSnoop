@@ -118,6 +118,21 @@ async def handle_videos(message: types.Message, state: FSMContext):
         await message.reply("Видео уже существует на Yandex.Disk")
     await state.clear()
 
+@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.AUDIO)
+async def handle_audio(message: types.Message, state: FSMContext):
+    audio = message.audio
+    file_info = await bot.get_file(audio.file_id)
+    file_path = file_info.file_path
+    file_name = f"{audio.file_id}.mp3"
+
+    file = await bot.download_file(file_path)
+
+    if await upload_to_yandex_disk(file, file_name, "Музыка"):
+        await message.reply("Аудио успешно загружено на Yandex.Disk в папку 'Музыка'")
+    else:
+        await message.reply("Аудио уже существует на Yandex.Disk")
+    await state.clear()
+
 @router.message(lambda message: message.text == "🗑️Очистить корзину")
 async def clear_trash(message: types.Message):
     try:
