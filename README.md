@@ -85,7 +85,7 @@ pip install aiogram yadisk requests python-dotenv
 ```
 
 ### Шаг 7: Настройка переменных
-Создайте файл `.env` в вашем проекте и добавьте в него следующее содержимое:
+Создайте файл `.env` в вашей директории с программой и добавьте в него следующее содержимое:
 ```bash
 BOT_API_TOKEN=YOUR_BOT_API_TOKEN # Поменяйте на токен вашего бота Telegram
 YANDEX_DISK_TOKEN=YOUR_YANDEX_DISK_TOKEN # Поменяйте на токен вашего приложения Yandex 
