@@ -1,0 +1,4 @@
+aiogram
+yadisk
+python-dotenv
+requests
