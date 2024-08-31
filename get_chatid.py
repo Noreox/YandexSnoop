@@ -1,7 +1,11 @@
-from aiogram import Bot, types
+from aiogram import Bot
 import asyncio
+import os
+from dotenv import load_dotenv
 
-API_TOKEN = 'YOUR_BOT_API_TOKEN'  # Замените на HTTP-API токен вашего бота
+load_dotenv()
+
+API_TOKEN = os.getenv('TELEGRAM_API_BOT_TOKEN')
 
 async def get_chat_id():
     bot = Bot(token=API_TOKEN)
@@ -9,9 +13,10 @@ async def get_chat_id():
     if updates:
         chat_id = updates[-1].message.chat.id
         print(f"Ваш chat_id: {chat_id}")
+        print("Добавьте этот chat_id в файл .env")
     else:
         print("Нет доступных обновлений. Отправьте сообщение боту и попробуйте снова.")
-    await bot.session.close()  # Закрытие сессии, не бота
+    await bot.session.close()
 
 if __name__ == '__main__':
     asyncio.run(get_chat_id())

@@ -14,21 +14,22 @@ import os
 import requests
 import time
 from typing import Union, BinaryIO  # Импорт для аннотаций типов
-
-# Константы для URL-адресов API Яндекс.Диска
-YANDEX_DISK_API_BASE_URL = "https://cloud-api.yandex.net/v1/disk"
-TRASH_RESOURCES_URL = f"{YANDEX_DISK_API_BASE_URL}/trash/resources"
+from functools import wraps
 
 # Загрузка переменных окружения из файла .env
 load_dotenv()
 
-print(f"BOT_API_TOKEN: {os.getenv('BOT_API_TOKEN')}")
-print(f"YANDEX_DISK_TOKEN: {os.getenv('YANDEX_DISK_TOKEN')}")
-print(f"CHAT_ID: {os.getenv('CHAT_ID')}")
-
 # Получение токенов из переменных окружения
-API_TOKEN = os.getenv('BOT_API_TOKEN')
-YANDEX_DISK_TOKEN = os.getenv('YANDEX_DISK_TOKEN')
+API_TOKEN = os.getenv('TELEGRAM_API_BOT_TOKEN')
+YANDEX_DISK_TOKEN = os.getenv('YANDEX_OAUTH_API_APP_ID')
+CHAT_ID = os.getenv('CHAT_ID')
+
+if not all([API_TOKEN, YANDEX_DISK_TOKEN, CHAT_ID]):
+    raise ValueError("Не все необходимые переменные окружения установлены. Проверьте файл .env")
+
+# Константы для URL-адресов API Яндекс.Диска
+YANDEX_DISK_API_BASE_URL = "https://cloud-api.yandex.net/v1/disk"
+TRASH_RESOURCES_URL = f"{YANDEX_DISK_API_BASE_URL}/trash/resources"
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -48,9 +49,23 @@ class BotStates(StatesGroup):
     uploading = State()
     searching = State()
 
+def is_authorized(message: types.Message) -> bool:
+    authorized_chat_id = int(CHAT_ID)
+    return message.chat.id == authorized_chat_id
+
+# Декоратор для проверки авторизации
+def auth_required(func):
+    @wraps(func)
+    async def wrapper(message: types.Message, *args, **kwargs):
+        if is_authorized(message):
+            return await func(message, *args, **kwargs)
+        else:
+            await message.reply("Вы не авторизованы для использования этого бота.")
+    return wrapper
+
 async def send_welcome_message() -> None:
     """Отправляет приветственное сообщение в чат."""
-    chat_id = os.getenv('CHAT_ID')
+    chat_id = int(CHAT_ID)
     await bot.send_message(chat_id, "Бот запущен, чтобы приступить к работе, выберите нужное вам действие")
 
 async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str) -> bool:
@@ -84,6 +99,7 @@ async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str
         return False
 
 @router.message(Command(commands=["upload"]))
+@auth_required
 async def initiate_upload(message: types.Message, state: FSMContext) -> None:
     """Инициирует процесс загрузки файла."""
     logging.info("Пользователь ввел команду '/upload'")
@@ -96,9 +112,11 @@ async def handle_file_upload(message: types.Message, state: FSMContext, file_typ
 
     :param message: Сообщение с файлом
     :param state: Состояние FSM
-    :param file_type: Тип файла (документ, фото, видео, аудио)
+    :param file_type: Тип файла (document, photo, video, audio)
     """
     file_obj = getattr(message, file_type)
+    if file_type == 'photo':
+        file_obj = file_obj[-1]  # Берем последнее (самое большое) фото
     file_info = await bot.get_file(file_obj.file_id)
     file_path = file_info.file_path
     file_name = getattr(file_obj, 'file_name', f"{file_obj.file_id}.{file_type}")
@@ -119,22 +137,27 @@ async def handle_file_upload(message: types.Message, state: FSMContext, file_typ
 
 # Обработчики для различных типов файлов
 @router.message(BotStates.uploading, lambda message: message.content_type == ContentType.DOCUMENT)
+@auth_required
 async def handle_docs(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "document")
 
 @router.message(BotStates.uploading, lambda message: message.content_type == ContentType.PHOTO)
+@auth_required
 async def handle_photos(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "photo")
 
 @router.message(BotStates.uploading, lambda message: message.content_type == ContentType.VIDEO)
+@auth_required
 async def handle_videos(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "video")
 
 @router.message(BotStates.uploading, lambda message: message.content_type == ContentType.AUDIO)
+@auth_required
 async def handle_audio(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "audio")
 
 @router.message(Command(commands=["clear"]))
+@auth_required
 async def clear_trash(message: types.Message, state: FSMContext) -> None:
     """Очищает корзину Яндекс.Диска."""
     await state.set_state(BotStates.idle)
@@ -142,8 +165,12 @@ async def clear_trash(message: types.Message, state: FSMContext) -> None:
         headers = {"Authorization": f"OAuth {YANDEX_DISK_TOKEN}"}
         params_info = {"path": "/"}
 
+        logging.info(f"Отправка запроса к Яндекс.Диску. URL: {TRASH_RESOURCES_URL}, Headers: {headers}, Params: {params_info}")
+
         # Получение информации о корзине
         response_info = requests.get(TRASH_RESOURCES_URL, headers=headers, params=params_info)
+
+        logging.info(f"Получен ответ от Яндекс.Диска. Статус: {response_info.status_code}, Тело: {response_info.text}")
 
         if response_info.status_code == 200:
             trash_info = response_info.json()
@@ -200,6 +227,7 @@ def search_files_and_folders_recursive(path: str, query: str) -> list:
     return search_results
 
 @router.message(Command(commands=["search"]))
+@auth_required
 async def initiate_search(message: types.Message, state: FSMContext) -> None:
     """Инициирует процесс поиска файлов и папок."""
     logging.info("Пользователь ввел команду '/search'")
@@ -207,6 +235,7 @@ async def initiate_search(message: types.Message, state: FSMContext) -> None:
     await state.set_state(BotStates.searching)
 
 @router.message(BotStates.searching)
+@auth_required
 async def search_files(message: types.Message, state: FSMContext) -> None:
     """Выполняет поиск файлов и папок на Яндекс.Диске."""
     logging.info(f"Получен запрос на поиск: {message.text}")
@@ -237,8 +266,7 @@ dp.include_router(router)
 
 async def main() -> None:
     """Основная функция для запуска бота."""
-    dp['bot'] = bot
-    await send_welcome_message()
+    await send_welcome_message() 
     await dp.start_polling(bot)
 
 if __name__ == '__main__':

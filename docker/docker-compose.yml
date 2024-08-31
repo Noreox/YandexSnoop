@@ -1,0 +1,12 @@
+version: '3'
+services:
+  mybot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: mybot
+    restart: always
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
