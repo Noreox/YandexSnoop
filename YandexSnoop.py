@@ -1,3 +1,4 @@
+# Импорт необходимых библиотек и модулей
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, types, Router
@@ -12,138 +13,135 @@ from dotenv import load_dotenv
 import os
 import requests
 import time
+from typing import Union, BinaryIO  # Импорт для аннотаций типов
 
-# Загрузка переменных окружения из .env файла
+# Константы для URL-адресов API Яндекс.Диска
+YANDEX_DISK_API_BASE_URL = "https://cloud-api.yandex.net/v1/disk"
+TRASH_RESOURCES_URL = f"{YANDEX_DISK_API_BASE_URL}/trash/resources"
+
+# Загрузка переменных окружения из файла .env
 load_dotenv()
 
-API_TOKEN = os.getenv('BOT_API_TOKEN')  # Получение токена бота из переменных окружения
-YANDEX_DISK_TOKEN = os.getenv('YANDEX_DISK_TOKEN')  # Получение токена Яндекс.Диска из переменных окружения
+# Получение токенов из переменных окружения
+API_TOKEN = os.getenv('BOT_API_TOKEN')
+YANDEX_DISK_TOKEN = os.getenv('YANDEX_DISK_TOKEN')
 
-# Конфигурация логирования
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота и диспетчера
+# Инициализация бота, хранилища состояний и диспетчера
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(storage=storage)  # Инициализация Dispatcher с хранилищем состояний
+dp = Dispatcher(storage=storage)
 router = Router()
 
-# Инициализация Яндекс Диска
+# Инициализация клиента Яндекс.Диска
 y = yadisk.YaDisk(token=YANDEX_DISK_TOKEN)
 
+# Определение состояний для конечного автомата (FSM)
 class UploadStates(StatesGroup):
     waiting_for_upload = State()
 
 class SearchStates(StatesGroup):
     waiting_for_query = State()
 
-async def send_welcome_message():
-    chat_id = os.getenv('CHAT_ID')  # Получение chat_id из переменных окружения
+async def send_welcome_message() -> None:
+    """Отправляет приветственное сообщение в чат."""
+    chat_id = os.getenv('CHAT_ID')
     await bot.send_message(chat_id, "Бот запущен, чтобы приступить к работе, выберите нужное вам действие")
 
-async def upload_to_yandex_disk(file, file_name, folder_type):
+async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str) -> bool:
+    """
+    Загружает файл на Яндекс Диск.
+
+    :param file: Файл для загрузки
+    :param file_name: Имя файла
+    :param folder_type: Тип папки для загрузки
+    :return: True, если файл успешно загружен, False, если файл уже существует
+    """
     folder_name = datetime.now().strftime('%B_%Y')
     folder_path = f"{folder_name}/{folder_type}"
 
-    if not y.exists(folder_name):
-        y.mkdir(folder_name)
-    if not y.exists(folder_path):
-        y.mkdir(folder_path)
+    try:
+        # Создание папок, если они не существуют
+        if not y.exists(folder_name):
+            y.mkdir(folder_name)
+        if not y.exists(folder_path):
+            y.mkdir(folder_path)
 
-    file_path = f"{folder_path}/{file_name}"
-    if y.exists(file_path):
-        return False  # Файл уже существует
+        file_path = f"{folder_path}/{file_name}"
+        if y.exists(file_path):
+            return False
 
-    y.upload(file, file_path)
-    return True  # Файл успешно загружен
+        # Загрузка файла
+        y.upload(file, file_path)
+        return True
+    except yadisk.exceptions.YaDiskError as e:
+        logging.error(f"Ошибка при загрузке файла на Яндекс.Диск: {e}")
+        return False
 
 @router.message(Command(commands=["upload"]))
-async def initiate_upload(message: types.Message, state: FSMContext):
+async def initiate_upload(message: types.Message, state: FSMContext) -> None:
+    """Инициирует процесс загрузки файла."""
     logging.info("Пользователь ввел команду '/upload'")
     await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Яндекс Диск, для этого выберите нужный тип файла и отправьте его")
     await state.set_state(UploadStates.waiting_for_upload)
 
-@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.DOCUMENT)
-async def handle_docs(message: types.Message, state: FSMContext):
-    document = message.document
-    file_info = await bot.get_file(document.file_id)
+async def handle_file_upload(message: types.Message, state: FSMContext, file_type: str) -> None:
+    """
+    Обрабатывает загрузку файла на Яндекс Диск.
+
+    :param message: Сообщение с файлом
+    :param state: Состояние FSM
+    :param file_type: Тип файла (документ, фото, видео, аудио)
+    """
+    file_obj = getattr(message, file_type)
+    file_info = await bot.get_file(file_obj.file_id)
     file_path = file_info.file_path
-    file_name = document.file_name
+    file_name = getattr(file_obj, 'file_name', f"{file_obj.file_id}.{file_type}")
 
     file = await bot.download_file(file_path)
 
-    if await upload_to_yandex_disk(file, file_name, "Файлы"):
-        await message.reply("Файл успешно загружен на Яндекс Диск в папку 'Файлы'")
+    # Проверка размера файла (ограничение в 100 МБ)
+    if file.getbuffer().nbytes > 100 * 1024 * 1024:
+        await message.reply(f"{file_type.capitalize()} слишком большой. Максимальный размер - 100 МБ.")
+        await state.clear()
+        return
+
+    folder_type = {"document": "Файлы", "photo": "Фото", "video": "Видео", "audio": "Музыка"}[file_type]
+
+    if await upload_to_yandex_disk(file, file_name, folder_type):
+        await message.reply(f"{file_type.capitalize()} успешно загружен на Яндекс Диск в папку '{folder_type}'")
     else:
-        await message.reply("Файл уже существует на Яндекс Диске")
+        await message.reply(f"{file_type.capitalize()} уже существует на Яндекс Диске")
     await state.clear()
+
+# Обработчики для различных типов файлов
+@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.DOCUMENT)
+async def handle_docs(message: types.Message, state: FSMContext) -> None:
+    await handle_file_upload(message, state, "document")
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.PHOTO)
-async def handle_photos(message: types.Message, state: FSMContext):
-    photo = message.photo[-1]
-    file_info = await bot.get_file(photo.file_id)
-    file_path = file_info.file_path
-    file_name = f"{photo.file_id}.jpg"
-
-    file = await bot.download_file(file_path)
-
-    if await upload_to_yandex_disk(file, file_name, "Фото"):
-        await message.reply("Фото успешно загружено на Яндекс Диск в папку 'Фото'")
-    else:
-        await message.reply("Фото уже существует на Яндекс Диске")
-    await state.clear()
+async def handle_photos(message: types.Message, state: FSMContext) -> None:
+    await handle_file_upload(message, state, "photo")
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.VIDEO)
-async def handle_videos(message: types.Message, state: FSMContext):
-    video = message.video
-    file_info = await bot.get_file(video.file_id)
-    file_path = file_info.file_path
-    file_name = f"{video.file_id}.mp4"
-
-    file = await bot.download_file(file_path)
-
-    if await upload_to_yandex_disk(file, file_name, "Видео"):
-        await message.reply("Видео успешно загружено на Яндекс Диск в папку 'Видео'")  # Добавлено сообщение об успешной загрузке
-    else:
-        await message.reply("Видео уже существует на Яндекс Диске")
-    await state.clear()
+async def handle_videos(message: types.Message, state: FSMContext) -> None:
+    await handle_file_upload(message, state, "video")
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.AUDIO)
-async def handle_audio(message: types.Message, state: FSMContext):
-    audio = message.audio
-    file_info = await bot.get_file(audio.file_id)
-    file_path = file_info.file_path
-    file_name = f"{audio.file_id}.mp3"
-
-    file = await bot.download_file(file_path)
-
-    if await upload_to_yandex_disk(file, file_name, "Музыка"):
-        await message.reply("Аудио успешно загружено на Яндекс Диск в папку 'Музыка'")
-    else:
-        await message.reply("Аудио уже существует на Яндекс Диске")
-    await state.clear()
+async def handle_audio(message: types.Message, state: FSMContext) -> None:
+    await handle_file_upload(message, state, "audio")
 
 @router.message(Command(commands=["clear"]))
-async def clear_trash(message: types.Message):
+async def clear_trash(message: types.Message) -> None:
+    """Очищает корзину Яндекс.Диска."""
     try:
-        # Получаем OAuth токен из переменных окружения
-        token = os.getenv('YANDEX_DISK_TOKEN')
+        headers = {"Authorization": f"OAuth {YANDEX_DISK_TOKEN}"}
+        params_info = {"path": "/"}
 
-        # URL для получения информации о корзине
-        url_info = "https://cloud-api.yandex.net/v1/disk/trash/resources"
-
-        # Заголовки для авторизации
-        headers = {
-            "Authorization": f"OAuth {token}"
-        }
-
-        # Параметры запроса для получения информации о корзине
-        params_info = {
-            "path": "/"
-        }
-
-        # Отправляем запрос для получения информации о корзине
-        response_info = requests.get(url_info, headers=headers, params=params_info)
+        # Получение информации о корзине
+        response_info = requests.get(TRASH_RESOURCES_URL, headers=headers, params=params_info)
 
         if response_info.status_code == 200:
             trash_info = response_info.json()
@@ -154,21 +152,13 @@ async def clear_trash(message: types.Message):
             await message.reply(f"Произошла ошибка при получении информации о корзине: {response_info.json()}")
             return
 
-        # URL для очистки корзины
-        url_clear = "https://cloud-api.yandex.net/v1/disk/trash/resources"
-
-        # Параметры запроса для очистки корзины
-        params_clear = {
-            "path": "/",
-            "permanently": "true"
-        }
-
-        # Отправляем запрос на очистку корзины
-        response_clear = requests.delete(url_clear, headers=headers, params=params_clear)
+        # Очистка корзины
+        params_clear = {"path": "/", "permanently": "true"}
+        response_clear = requests.delete(TRASH_RESOURCES_URL, headers=headers, params=params_clear)
 
         if response_clear.status_code == 202:
             operation_href = response_clear.json().get('href')
-            # Проверяем статус операции очистки корзины
+            # Ожидание завершения операции очистки
             while True:
                 operation_status = requests.get(operation_href, headers=headers)
                 if operation_status.status_code == 200:
@@ -179,7 +169,7 @@ async def clear_trash(message: types.Message):
                     elif status == 'failed':
                         await message.reply("Произошла ошибка при очистке корзины")
                         break
-                time.sleep(1)  # Ждем 1 секунду перед повторной проверкой
+                time.sleep(1)
         elif response_clear.status_code == 204:
             await message.reply("Корзина успешно очищена")
         else:
@@ -187,40 +177,48 @@ async def clear_trash(message: types.Message):
     except Exception as e:
         await message.reply(f"Произошла ошибка при очистке корзины: {e}")
 
-def search_files_and_folders_recursive(path, query):
+def search_files_and_folders_recursive(path: str, query: str) -> list:
+    """
+    Рекурсивно ищет файлы и папки на Яндекс.Диске.
+
+    :param path: Путь для поиска
+    :param query: Поисковый запрос
+    :return: Список найденных файлов и папок
+    """
     search_results = []
     for item in y.listdir(path):
         logging.info(f"Проверка элемента: {item['name']} (тип: {item['type']})")
         if item['type'] == 'dir':
             if query.lower() in item['name'].lower():
                 search_results.append(item['path'])
+            # Рекурсивный поиск в подпапках
             search_results.extend(search_files_and_folders_recursive(item['path'], query))
         elif item['type'] == 'file' and query.lower() in item['name'].lower():
             search_results.append(item['path'])
     return search_results
 
 @router.message(Command(commands=["search"]))
-async def initiate_search(message: types.Message, state: FSMContext):
+async def initiate_search(message: types.Message, state: FSMContext) -> None:
+    """Инициирует процесс поиска файлов и папок."""
     logging.info("Пользователь ввел команду '/search'")
     await message.reply("Какие файлы или папки вы желаете найти?")
     await state.set_state(SearchStates.waiting_for_query)
 
 @router.message(SearchStates.waiting_for_query)
-async def search_files(message: types.Message, state: FSMContext):
+async def search_files(message: types.Message, state: FSMContext) -> None:
+    """Выполняет поиск файлов и папок на Яндекс.Диске."""
     logging.info(f"Получен запрос на поиск: {message.text}")
     query = message.text
     if not query:
         await message.reply("Пожалуйста, укажите критерии поиска.")
         return
 
-    # Реализация рекурсивного поиска файлов и папок
     search_results = search_files_and_folders_recursive("/", query)
     logging.info(f"Результаты поиска для '{query}': {search_results}")
 
     if not search_results:
         await message.reply("Файлы и папки с таким содержимым не найдены.")
     else:
-        # Формирование ответа с результатами поиска
         results_message = "\n".join(search_results)
         await message.reply(f"Найденные файлы и папки:\n{results_message}")
 
@@ -229,9 +227,10 @@ async def search_files(message: types.Message, state: FSMContext):
 # Регистрация роутера
 dp.include_router(router)
 
-async def main():
-    dp['bot'] = bot  # Устанавливаем bot в Dispatcher
-    await send_welcome_message()  # Отправка приветственного сообщения
+async def main() -> None:
+    """Основная функция для запуска бота."""
+    dp['bot'] = bot
+    await send_welcome_message()
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
