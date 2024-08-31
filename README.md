@@ -40,10 +40,12 @@
    - Создайте новое приложение, выберите "Веб-сервисы".
    - В качестве "Redirect URL" укажите: `https://oauth.yandex.ru/verification_code`.
    - Предоставьте приложению следующие права:
+     - Чтение событий аудит лога Диска: `ya360_security:audit_log_disk`
      - Доступ к папке приложения на Диске: `cloud_api:disk.app_folder`
      - Чтение всего Диска: `cloud_api:disk.read`
      - Запись в любом месте на Диске: `cloud_api:disk.write`
      - Доступ к информации о Диске: `cloud_api:disk.info`
+     - Доступ к Яндекс.Диску для приложений: `yadisk:disk`
    - Получите токен, перейдя по ссылке:
      `https://oauth.yandex.ru/authorize?response_type=token&client_id=ВАШ_CLIENTID`
 
