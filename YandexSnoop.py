@@ -22,6 +22,10 @@ TRASH_RESOURCES_URL = f"{YANDEX_DISK_API_BASE_URL}/trash/resources"
 # Загрузка переменных окружения из файла .env
 load_dotenv()
 
+print(f"BOT_API_TOKEN: {os.getenv('BOT_API_TOKEN')}")
+print(f"YANDEX_DISK_TOKEN: {os.getenv('YANDEX_DISK_TOKEN')}")
+print(f"CHAT_ID: {os.getenv('CHAT_ID')}")
+
 # Получение токенов из переменных окружения
 API_TOKEN = os.getenv('BOT_API_TOKEN')
 YANDEX_DISK_TOKEN = os.getenv('YANDEX_DISK_TOKEN')
@@ -39,11 +43,10 @@ router = Router()
 y = yadisk.YaDisk(token=YANDEX_DISK_TOKEN)
 
 # Определение состояний для конечного автомата (FSM)
-class UploadStates(StatesGroup):
-    waiting_for_upload = State()
-
-class SearchStates(StatesGroup):
-    waiting_for_query = State()
+class BotStates(StatesGroup):
+    idle = State()
+    uploading = State()
+    searching = State()
 
 async def send_welcome_message() -> None:
     """Отправляет приветственное сообщение в чат."""
@@ -84,8 +87,8 @@ async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str
 async def initiate_upload(message: types.Message, state: FSMContext) -> None:
     """Инициирует процесс загрузки файла."""
     logging.info("Пользователь ввел команду '/upload'")
-    await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Яндекс Диск, для этого выберите нужный тип файла и отправьте его")
-    await state.set_state(UploadStates.waiting_for_upload)
+    await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Яндекс Диск, для этого выберите нужный тип файла и отправьте его. Чтобы выйти из режима загрузки, введите любую другую команду.")
+    await state.set_state(BotStates.uploading)
 
 async def handle_file_upload(message: types.Message, state: FSMContext, file_type: str) -> None:
     """
@@ -105,37 +108,36 @@ async def handle_file_upload(message: types.Message, state: FSMContext, file_typ
     # Проверка размера файла (ограничение в 100 МБ)
     if file.getbuffer().nbytes > 100 * 1024 * 1024:
         await message.reply(f"{file_type.capitalize()} слишком большой. Максимальный размер - 100 МБ.")
-        await state.clear()
         return
 
     folder_type = {"document": "Файлы", "photo": "Фото", "video": "Видео", "audio": "Музыка"}[file_type]
 
     if await upload_to_yandex_disk(file, file_name, folder_type):
-        await message.reply(f"{file_type.capitalize()} успешно загружен на Яндекс Диск в папку '{folder_type}'")
+        await message.reply(f"{file_type.capitalize()} успешно загружен на Яндекс Диск в папку '{folder_type}'. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
     else:
-        await message.reply(f"{file_type.capitalize()} уже существует на Яндекс Диске")
-    await state.clear()
+        await message.reply(f"{file_type.capitalize()} уже существует на Яндекс Диске. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
 
 # Обработчики для различных типов файлов
-@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.DOCUMENT)
+@router.message(BotStates.uploading, lambda message: message.content_type == ContentType.DOCUMENT)
 async def handle_docs(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "document")
 
-@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.PHOTO)
+@router.message(BotStates.uploading, lambda message: message.content_type == ContentType.PHOTO)
 async def handle_photos(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "photo")
 
-@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.VIDEO)
+@router.message(BotStates.uploading, lambda message: message.content_type == ContentType.VIDEO)
 async def handle_videos(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "video")
 
-@router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.AUDIO)
+@router.message(BotStates.uploading, lambda message: message.content_type == ContentType.AUDIO)
 async def handle_audio(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "audio")
 
 @router.message(Command(commands=["clear"]))
-async def clear_trash(message: types.Message) -> None:
+async def clear_trash(message: types.Message, state: FSMContext) -> None:
     """Очищает корзину Яндекс.Диска."""
+    await state.set_state(BotStates.idle)
     try:
         headers = {"Authorization": f"OAuth {YANDEX_DISK_TOKEN}"}
         params_info = {"path": "/"}
@@ -201,10 +203,10 @@ def search_files_and_folders_recursive(path: str, query: str) -> list:
 async def initiate_search(message: types.Message, state: FSMContext) -> None:
     """Инициирует процесс поиска файлов и папок."""
     logging.info("Пользователь ввел команду '/search'")
-    await message.reply("Какие файлы или папки вы желаете найти?")
-    await state.set_state(SearchStates.waiting_for_query)
+    await message.reply("Введите запрос для поиска файлов или папок. Чтобы выйти из режима поиска, введите любую другую команду.")
+    await state.set_state(BotStates.searching)
 
-@router.message(SearchStates.waiting_for_query)
+@router.message(BotStates.searching)
 async def search_files(message: types.Message, state: FSMContext) -> None:
     """Выполняет поиск файлов и папок на Яндекс.Диске."""
     logging.info(f"Получен запрос на поиск: {message.text}")
@@ -217,12 +219,18 @@ async def search_files(message: types.Message, state: FSMContext) -> None:
     logging.info(f"Результаты поиска для '{query}': {search_results}")
 
     if not search_results:
-        await message.reply("Файлы и папки с таким содержимым не найдены.")
+        await message.reply("Файлы и папки с таким содержимым не найдены. Вы можете продолжить поиск, введя новый запрос, или ввести другую команду для выхода из режима поиска.")
     else:
         results_message = "\n".join(search_results)
-        await message.reply(f"Найденные файлы и папки:\n{results_message}")
+        await message.reply(f"Найденные файлы и папки:\n{results_message}\n\nВы можете продолжить поиск, введя новый запрос, или ввести другую команду для выхода из режима поиска.")
 
-    await state.clear()
+# Обработчик для выхода из текущего режима при вводе новой команды
+@router.message(lambda message: message.text.startswith('/'))
+async def handle_new_command(message: types.Message, state: FSMContext) -> None:
+    current_state = await state.get_state()
+    if current_state in [BotStates.uploading, BotStates.searching]:
+        await state.set_state(BotStates.idle)
+        await message.reply("Выход из текущего режима. Выберите новую команду.")
 
 # Регистрация роутера
 dp.include_router(router)
