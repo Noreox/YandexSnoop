@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import os
 import requests
 import time
-from typing import Union, BinaryIO  # Импорт для аннотаций типов
+from typing import Union, BinaryIO
 from functools import wraps
 
 # Загрузка переменных окружения из файла .env
@@ -98,6 +98,21 @@ async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str
         logging.error(f"Ошибка при загрузке файла на Яндекс.Диск: {e}")
         return False
 
+@router.message(Command(commands=["space_info", "clear", "search", "upload"]))
+@auth_required
+async def handle_commands(message: types.Message, state: FSMContext) -> None:
+    """Обрабатывает все команды и сбрасывает состояние."""
+    await state.set_state(BotStates.idle)
+    
+    if message.text == '/space_info':
+        await get_space_info(message, state)
+    elif message.text == '/clear':
+        await clear_trash(message, state)
+    elif message.text == '/search':
+        await initiate_search(message, state)
+    elif message.text == '/upload':
+        await initiate_upload(message, state)
+
 @router.message(Command(commands=["upload"]))
 @auth_required
 async def initiate_upload(message: types.Message, state: FSMContext) -> None:
@@ -160,7 +175,6 @@ async def handle_audio(message: types.Message, state: FSMContext) -> None:
 @auth_required
 async def clear_trash(message: types.Message, state: FSMContext) -> None:
     """Очищает корзину Яндекс.Диска."""
-    await state.set_state(BotStates.idle)
     try:
         headers = {"Authorization": f"OAuth {YANDEX_DISK_TOKEN}"}
         params_info = {"path": "/"}
@@ -238,6 +252,10 @@ async def initiate_search(message: types.Message, state: FSMContext) -> None:
 @auth_required
 async def search_files(message: types.Message, state: FSMContext) -> None:
     """Выполняет поиск файлов и папок на Яндекс.Диске."""
+    if message.text.startswith('/'):
+        # Если введена команда, выходим из режима поиска
+        return
+
     logging.info(f"Получен запрос на поиск: {message.text}")
     query = message.text
     if not query:
@@ -253,13 +271,31 @@ async def search_files(message: types.Message, state: FSMContext) -> None:
         results_message = "\n".join(search_results)
         await message.reply(f"Найденные файлы и папки:\n{results_message}\n\nВы можете продолжить поиск, введя новый запрос, или ввести другую команду для выхода из режима поиска.")
 
-# Обработчик для выхода из текущего режима при вводе новой команды
-@router.message(lambda message: message.text.startswith('/'))
-async def handle_new_command(message: types.Message, state: FSMContext) -> None:
-    current_state = await state.get_state()
-    if current_state in [BotStates.uploading, BotStates.searching]:
-        await state.set_state(BotStates.idle)
-        await message.reply("Выход из текущего режима. Выберите новую команду.")
+@router.message(Command(commands=["space_info"]))
+@auth_required
+async def get_space_info(message: types.Message, state: FSMContext) -> None:
+    """Получает информацию о свободном месте на Яндекс.Диске."""
+    try:
+        disk_info = y.get_disk_info()
+        total_space = disk_info['total_space']
+        used_space = disk_info['used_space']
+        free_space = total_space - used_space
+
+        # Конвертация байтов в гигабайты
+        total_space_gb = total_space / (1024 ** 3)
+        used_space_gb = used_space / (1024 ** 3)
+        free_space_gb = free_space / (1024 ** 3)
+
+        response = (
+            f"Информация о пространстве на Яндекс.Диске:\n"
+            f"Общее пространство: {total_space_gb:.2f} ГБ\n"
+            f"Использовано: {used_space_gb:.2f} ГБ\n"
+            f"Свободно: {free_space_gb:.2f} ГБ"
+        )
+        await message.reply(response)
+    except Exception as e:
+        logging.error(f"Ошибка при получении информации о пространстве: {e}")
+        await message.reply("Произошла ошибка при получении информации о пространстве на Яндекс.Диске.")
 
 # Регистрация роутера
 dp.include_router(router)
