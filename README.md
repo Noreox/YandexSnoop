@@ -46,6 +46,7 @@
      - Запись в любом месте на Диске: `cloud_api:disk.write`
      - Доступ к информации о Диске: `cloud_api:disk.info`
      - Доступ к Яндекс.Диску для приложений: `yadisk:disk`
+
    - Получите токен, перейдя по ссылке:
      `https://oauth.yandex.ru/authorize?response_type=token&client_id=ВАШ_CLIENTID`
 
