@@ -28,18 +28,8 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)  # Инициализация Dispatcher с хранилищем состояний
 router = Router()
 
-# Инициализация Яндекс.Диска
+# Инициализация Яндекс Диска
 y = yadisk.YaDisk(token=YANDEX_DISK_TOKEN)
-
-# Создаем клавиатуру с кнопками "Загрузить файлы", "Очистить корзину" и "Поиск"
-keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📤Загрузить файлы")],
-        [KeyboardButton(text="🗑️Очистить корзину")],
-        [KeyboardButton(text="🔎Поиск")]
-    ],
-    resize_keyboard=True
-)
 
 class UploadStates(StatesGroup):
     waiting_for_upload = State()
@@ -49,7 +39,7 @@ class SearchStates(StatesGroup):
 
 async def send_welcome_message():
     chat_id = os.getenv('CHAT_ID')  # Получение chat_id из переменных окружения
-    await bot.send_message(chat_id, "Бот запущен, чтобы приступить к работе, выберите нужное вам действие", reply_markup=keyboard)
+    await bot.send_message(chat_id, "Бот запущен, чтобы приступить к работе, выберите нужное вам действие")
 
 async def upload_to_yandex_disk(file, file_name, folder_type):
     folder_name = datetime.now().strftime('%B_%Y')
@@ -67,10 +57,10 @@ async def upload_to_yandex_disk(file, file_name, folder_type):
     y.upload(file, file_path)
     return True  # Файл успешно загружен
 
-@router.message(lambda message: message.text == "📤Загрузить файлы")
+@router.message(Command(commands=["upload"]))
 async def initiate_upload(message: types.Message, state: FSMContext):
-    logging.info("Пользователь нажал кнопку 'Загрузить файлы'")
-    await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Yandex.Disk, для этого выберите нужный тип файла и отправьте его")
+    logging.info("Пользователь ввел команду '/upload'")
+    await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Яндекс Диск, для этого выберите нужный тип файла и отправьте его")
     await state.set_state(UploadStates.waiting_for_upload)
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.DOCUMENT)
@@ -83,9 +73,9 @@ async def handle_docs(message: types.Message, state: FSMContext):
     file = await bot.download_file(file_path)
 
     if await upload_to_yandex_disk(file, file_name, "Файлы"):
-        await message.reply("Файл успешно загружен на Yandex.Disk в папку 'Файлы'")
+        await message.reply("Файл успешно загружен на Яндекс Диск в папку 'Файлы'")
     else:
-        await message.reply("Файл уже существует на Yandex.Disk")
+        await message.reply("Файл уже существует на Яндекс Диске")
     await state.clear()
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.PHOTO)
@@ -98,9 +88,9 @@ async def handle_photos(message: types.Message, state: FSMContext):
     file = await bot.download_file(file_path)
 
     if await upload_to_yandex_disk(file, file_name, "Фото"):
-        await message.reply("Фото успешно загружено на Yandex.Disk в папку 'Фото'")
+        await message.reply("Фото успешно загружено на Яндекс Диск в папку 'Фото'")
     else:
-        await message.reply("Фото уже существует на Yandex.Disk")
+        await message.reply("Фото уже существует на Яндекс Диске")
     await state.clear()
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.VIDEO)
@@ -113,9 +103,9 @@ async def handle_videos(message: types.Message, state: FSMContext):
     file = await bot.download_file(file_path)
 
     if await upload_to_yandex_disk(file, file_name, "Видео"):
-        await message.reply("Видео успешно загружено на Yandex.Disk в папку 'Видео'")  # Добавлено сообщение об успешной загрузке
+        await message.reply("Видео успешно загружено на Яндекс Диск в папку 'Видео'")  # Добавлено сообщение об успешной загрузке
     else:
-        await message.reply("Видео уже существует на Yandex.Disk")
+        await message.reply("Видео уже существует на Яндекс Диске")
     await state.clear()
 
 @router.message(UploadStates.waiting_for_upload, lambda message: message.content_type == ContentType.AUDIO)
@@ -128,12 +118,12 @@ async def handle_audio(message: types.Message, state: FSMContext):
     file = await bot.download_file(file_path)
 
     if await upload_to_yandex_disk(file, file_name, "Музыка"):
-        await message.reply("Аудио успешно загружено на Yandex.Disk в папку 'Музыка'")
+        await message.reply("Аудио успешно загружено на Яндекс Диск в папку 'Музыка'")
     else:
-        await message.reply("Аудио уже существует на Yandex.Disk")
+        await message.reply("Аудио уже существует на Яндекс Диске")
     await state.clear()
 
-@router.message(lambda message: message.text == "🗑️Очистить корзину")
+@router.message(Command(commands=["clear"]))
 async def clear_trash(message: types.Message):
     try:
         # Получаем OAuth токен из переменных окружения
@@ -158,10 +148,10 @@ async def clear_trash(message: types.Message):
         if response_info.status_code == 200:
             trash_info = response_info.json()
             if trash_info['_embedded']['total'] == 0:
-                await message.reply("Корзина уже пуста", reply_markup=keyboard)
+                await message.reply("Корзина уже пуста")
                 return
         else:
-            await message.reply(f"Произошла ошибка при получении информации о корзине: {response_info.json()}", reply_markup=keyboard)
+            await message.reply(f"Произошла ошибка при получении информации о корзине: {response_info.json()}")
             return
 
         # URL для очистки корзины
@@ -184,16 +174,16 @@ async def clear_trash(message: types.Message):
                 if operation_status.status_code == 200:
                     status = operation_status.json().get('status')
                     if status == 'success':
-                        await message.reply("Корзина успешно очищена", reply_markup=keyboard)
+                        await message.reply("Корзина успешно очищена")
                         break
                     elif status == 'failed':
-                        await message.reply("Произошла ошибка при очистке корзины", reply_markup=keyboard)
+                        await message.reply("Произошла ошибка при очистке корзины")
                         break
                 time.sleep(1)  # Ждем 1 секунду перед повторной проверкой
         elif response_clear.status_code == 204:
-            await message.reply("Корзина успешно очищена", reply_markup=keyboard)
+            await message.reply("Корзина успешно очищена")
         else:
-            await message.reply(f"Произошла ошибка при очистке корзины: {response_clear.json()}", reply_markup=keyboard)
+            await message.reply(f"Произошла ошибка при очистке корзины: {response_clear.json()}")
     except Exception as e:
         await message.reply(f"Произошла ошибка при очистке корзины: {e}")
 
@@ -209,9 +199,9 @@ def search_files_and_folders_recursive(path, query):
             search_results.append(item['path'])
     return search_results
 
-@router.message(lambda message: message.text == "🔎Поиск")
+@router.message(Command(commands=["search"]))
 async def initiate_search(message: types.Message, state: FSMContext):
-    logging.info("Пользователь нажал кнопку 'Поиск'")
+    logging.info("Пользователь ввел команду '/search'")
     await message.reply("Какие файлы или папки вы желаете найти?")
     await state.set_state(SearchStates.waiting_for_query)
 
@@ -228,7 +218,7 @@ async def search_files(message: types.Message, state: FSMContext):
     logging.info(f"Результаты поиска для '{query}': {search_results}")
 
     if not search_results:
-        await message.reply("Файлы и папки не найдены.")
+        await message.reply("Файлы и папки с таким содержимым не найдены.")
     else:
         # Формирование ответа с результатами поиска
         results_message = "\n".join(search_results)
