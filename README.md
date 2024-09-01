@@ -55,10 +55,10 @@
      ```bash
      cp .env.example .env
      ```
-   - Отредактируйте файл `.env`, вставив свои токены:
+   - Отредактируйте файл `.env`, вставив полученные ранее токены:
      ```
-     BOT_API_TOKEN=your_bot_token_here
-     YANDEX_DISK_TOKEN=your_yandex_disk_token_here
+     TELEGRAM_API_BOT_TOKEN=your_bot_token_here
+     YANDEX_OAUTH_API_APP_ID=your_yandex_oauth_app_id_here
      ```
    - Сохраните файл для следующего шага.
 
