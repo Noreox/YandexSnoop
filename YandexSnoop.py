@@ -15,6 +15,7 @@ import requests
 import time
 from typing import Union, BinaryIO
 from functools import wraps
+import youtube_dl
 
 # Загрузка переменных окружения из файла .env
 load_dotenv()
@@ -48,6 +49,7 @@ class BotStates(StatesGroup):
     idle = State()
     uploading = State()
     searching = State()
+    uploading_url = State()
 
 def is_authorized(message: types.Message) -> bool:
     authorized_chat_id = int(CHAT_ID)
@@ -98,7 +100,7 @@ async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str
         logging.error(f"Ошибка при загрузке файла на Яндекс.Диск: {e}")
         return False
 
-@router.message(Command(commands=["start", "space_info", "clear", "search", "upload"]))
+@router.message(Command(commands=["start", "space_info", "clear", "search", "upload", "upload_url"]))
 @auth_required
 async def handle_commands(message: types.Message, state: FSMContext) -> None:
     """Обрабатывает все команды и сбрасывает состояние."""
@@ -114,6 +116,8 @@ async def handle_commands(message: types.Message, state: FSMContext) -> None:
         await initiate_search(message, state)
     elif message.text == '/upload':
         await initiate_upload(message, state)
+    elif message.text == '/upload_url':
+        await initiate_upload_url(message, state)
 
 @router.message(Command(commands=["start"]))
 @auth_required
@@ -131,6 +135,14 @@ async def initiate_upload(message: types.Message, state: FSMContext) -> None:
     logging.info("Пользователь ввел команду '/upload'")
     await message.reply("Теперь вы можете отправлять файлы и фото для загрузки на Яндекс Диск, для этого выберите нужный тип файла и отправьте его. Чтобы выйти из режима загрузки, введите любую другую команду.")
     await state.set_state(BotStates.uploading)
+
+@router.message(Command(commands=["upload_url"]))
+@auth_required
+async def initiate_upload_url(message: types.Message, state: FSMContext) -> None:
+    """Инициирует процесс загрузки ресурса по URL."""
+    logging.info("Пользователь ввел команду '/upload_url'")
+    await message.reply("Пожалуйста, отправьте URL ресурса, который вы хотите загрузить на Яндекс Диск. Чтобы выйти из режима загрузки по URL, введите любую другую команду.")
+    await state.set_state(BotStates.uploading_url)
 
 async def handle_file_upload(message: types.Message, state: FSMContext, file_type: str) -> None:
     """
@@ -153,13 +165,46 @@ async def handle_file_upload(message: types.Message, state: FSMContext, file_typ
     if file.getbuffer().nbytes > 100 * 1024 * 1024:
         await message.reply(f"{file_type.capitalize()} слишком большой. Максимальный размер - 100 МБ.")
         return
-
     folder_type = {"document": "Файлы", "photo": "Фото", "video": "Видео", "audio": "Музыка"}[file_type]
+    file_type_rus = {"document": "Файл", "photo": "Фото", "video": "Видео", "audio": "Аудио"}[file_type]
+    verb = "загружено" if file_type in ["photo", "video"] else "загружен"
 
     if await upload_to_yandex_disk(file, file_name, folder_type):
-        await message.reply(f"{file_type.capitalize()} успешно загружен на Яндекс Диск в папку '{folder_type}'. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
+        await message.reply(f"{file_type_rus} успешно {verb} на Яндекс Диск в папку '{folder_type}'. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
     else:
-        await message.reply(f"{file_type.capitalize()} уже существует на Яндекс Диске. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
+        await message.reply(f"{file_type_rus} уже существует на Яндекс Диске. Вы можете продолжать отправлять файлы или ввести другую команду для выхода из режима загрузки.")
+
+async def handle_url_upload(message: types.Message, state: FSMContext) -> None:
+    """
+    Обрабатывает загрузку ресурса по URL на Яндекс Диск.
+
+    :param message: Сообщение с URL
+    :param state: Состояние FSM
+    """
+    url = message.text
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': '/tmp/%(title)s.%(ext)s',
+    }
+
+    try:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_name = ydl.prepare_filename(info_dict)
+            # Determine the folder type based on the file extension
+            file_extension = file_name.split('.')[-1].lower()
+            if file_extension in ['jpg', 'jpeg', 'png', 'gif']:
+                folder_type = "Фото"
+            else:
+                folder_type = "Видео"
+            with open(file_name, 'rb') as file:
+                if await upload_to_yandex_disk(file, os.path.basename(file_name), folder_type):
+                    await message.reply(f"Ресурс успешно загружен на Яндекс Диск в папку '{folder_type}'.")
+                else:
+                    await message.reply(f"Ресурс уже существует на Яндекс Диске.")
+    except Exception as e:
+        logging.error(f"Ошибка при загрузке ресурса по URL: {e}")
+        await message.reply(f"Произошла ошибка при загрузке ресурса: {e}")
 
 # Обработчики для различных типов файлов
 @router.message(BotStates.uploading, lambda message: message.content_type == ContentType.DOCUMENT)
@@ -181,6 +226,11 @@ async def handle_videos(message: types.Message, state: FSMContext) -> None:
 @auth_required
 async def handle_audio(message: types.Message, state: FSMContext) -> None:
     await handle_file_upload(message, state, "audio")
+
+@router.message(BotStates.uploading_url)
+@auth_required
+async def handle_url(message: types.Message, state: FSMContext) -> None:
+    await handle_url_upload(message, state)
 
 @router.message(Command(commands=["clear"]))
 @auth_required

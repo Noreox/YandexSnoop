@@ -2,3 +2,4 @@ aiogram==3.12.0
 yadisk==3.1.0
 python-dotenv==1.0.1
 requests==2.32.1
+youtube_dl==2021.12.17
