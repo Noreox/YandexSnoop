@@ -98,13 +98,15 @@ async def upload_to_yandex_disk(file: BinaryIO, file_name: str, folder_type: str
         logging.error(f"Ошибка при загрузке файла на Яндекс.Диск: {e}")
         return False
 
-@router.message(Command(commands=["space_info", "clear", "search", "upload"]))
+@router.message(Command(commands=["start", "space_info", "clear", "search", "upload"]))
 @auth_required
 async def handle_commands(message: types.Message, state: FSMContext) -> None:
     """Обрабатывает все команды и сбрасывает состояние."""
     await state.set_state(BotStates.idle)
     
-    if message.text == '/space_info':
+    if message.text == '/start':
+        await start_command(message, state)
+    elif message.text == '/space_info':
         await get_space_info(message, state)
     elif message.text == '/clear':
         await clear_trash(message, state)
@@ -112,6 +114,15 @@ async def handle_commands(message: types.Message, state: FSMContext) -> None:
         await initiate_search(message, state)
     elif message.text == '/upload':
         await initiate_upload(message, state)
+
+@router.message(Command(commands=["start"]))
+@auth_required
+async def start_command(message: types.Message, state: FSMContext) -> None:
+    """Обрабатывает команду /start."""
+    welcome_message = (
+        "Добро пожаловать! Я бот для работы с Яндекс.Диском. Вы можете посмотреть список доступных команд через меню, чтобы начать работу.\n\n"
+    )
+    await message.reply(welcome_message)
 
 @router.message(Command(commands=["upload"]))
 @auth_required
