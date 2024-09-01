@@ -4,10 +4,12 @@
 
 ## Требования
 
-- Python 3.8+
-- git
-- Docker (опционально, для запуска в контейнере)
-- Docker Compose (опционально, для запуска в контейнере)
+- [Python 3.11+](https://www.python.org/)
+- [venv](https://docs.python.org/3/library/venv.html)
+- [pip](https://pypi.org/project/pip/)
+- [git](https://git-scm.com/)
+- [docker](docker.com) (опционально, для запуска в контейнере)
+- [docker-compose](docker.com) (опционально, для запуска в контейнере)
 
 ## Установка и настройка
 
